@@ -1,45 +1,38 @@
 /* Registers the service worker (which reassembles the split game.unx and caches
-   the asset manifest) and only then starts the runner, so the very first
-   request for game.unx already goes through the worker. */
+   the asset manifest) and only then starts the runner.
+
+   A page that registers a service worker is NOT controlled by it until the next
+   navigation. If we are not yet controlled (first-ever load), reload once so the
+   SW takes over; the chosen route is preserved in sessionStorage by
+   game.html's __kaizoStartGame. After reload the page is controlled, runner.js
+   loads, and its game.unx fetch is reassembled by sw.js. */
 (function () {
   function loadGame() {
-    return new Promise(function (resolve, reject) {
-      if (window.__kaizoRunnerLoaded) return resolve();
-      window.__kaizoRunnerLoaded = true;
-      const script = document.createElement("script");
-      script.src = "runner.js";
-      script.async = true;
-      script.onload = function () { resolve(); };
-      script.onerror = function () { reject(new Error("failed to load runner.js")); };
-      document.head.appendChild(script);
-    });
-  }
-
-  async function waitForControl(timeoutMs) {
-    if (navigator.serviceWorker.controller) return true;
-    return new Promise(function (resolve) {
-      let done = false;
-      const finish = function (value) {
-        if (done) return;
-        done = true;
-        navigator.serviceWorker.removeEventListener("controllerchange", onChange);
-        resolve(value);
-      };
-      const onChange = function () { finish(true); };
-      navigator.serviceWorker.addEventListener("controllerchange", onChange);
-      setTimeout(function () { finish(!!navigator.serviceWorker.controller); }, timeoutMs);
-    });
+    if (window.__kaizoRunnerLoaded) return;
+    window.__kaizoRunnerLoaded = true;
+    const script = document.createElement("script");
+    script.src = "runner.js";
+    script.async = true;
+    document.head.appendChild(script);
   }
 
   async function loadSW() {
     try {
       await navigator.serviceWorker.register("sw.js");
       await navigator.serviceWorker.ready;
-      await waitForControl(4000);
+
+      if (navigator.serviceWorker.controller) {
+        // Page is controlled (reload or repeat visit) — start the runner.
+        loadGame();
+      } else {
+        // First load: SW registered but not yet controlling this page.
+        // Reload so the SW takes over; the route survives in sessionStorage.
+        location.reload();
+      }
     } catch (e) {
       console.error("[kaizo] service worker unavailable, loading runner directly", e);
+      loadGame();
     }
-    await loadGame();
   }
 
   window.__kaizoStartRunner = loadSW;
