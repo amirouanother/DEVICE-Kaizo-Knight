@@ -1,6 +1,6 @@
 	// Shim for the Opera GX gameFiles API (needed for game.unx to load on non-Opera browsers).
 	// game.unx is split into game.unx.part0..2 on GitHub; we fetch parts directly and reassemble.
-	// Pre-load game.unx at init so xa["game.unx"] is set immediately when __gx_prepare_cache runs.
+	// Pre-load game.unx SYNCHRONOUSLY at init so xa["game.unx"] is set before __gx_prepare_cache runs.
 	(function () {
 	  if (window.oprt && window.oprt.gameFiles) return;
 	  var cache = new Map();
@@ -61,11 +61,26 @@
 	    });
 	  }
 
-	  // Pre-load game.unx at init
-	  loadFile("game.unx").then(function (buf) {
-	    preloaded = buf;
-	    cache.set("game.unx:3afed3617e27d187611fcd684ee6d07f", new Uint8Array(buf));
-	  });
+	  // Pre-load game.unx synchronously via XHR
+	  try {
+	    var p0 = syncXHR("game.unx.part0");
+	    var p1 = syncXHR("game.unx.part1");
+	    var p2 = syncXHR("game.unx.part2");
+	    var total = p0.byteLength + p1.byteLength + p2.byteLength;
+	    var combined = new Uint8Array(total);
+	    combined.set(new Uint8Array(p0), 0);
+	    combined.set(new Uint8Array(p1), p0.byteLength);
+	    combined.set(new Uint8Array(p2), p0.byteLength + p1.byteLength);
+	    preloaded = combined.buffer;
+	    cache.set("game.unx:3afed3617e27d187611fcd684ee6d07f", combined);
+	  } catch (e) { /* pre-load failed; fetchAndCache will fall back to async load */ }
+
+	  function syncXHR(name) {
+	    var req = new XMLHttpRequest();
+	    req.open("GET", name, false);
+	    req.send();
+	    return req.response;
+	  }
 	})();
 
 	// Background Color Changer Function
