@@ -5,6 +5,7 @@
 	(function () {
 	  if (window.oprt && window.oprt.gameFiles) return;
 	  var cache = new Map();
+	  var stats = window.__gxStats = { prepare: 0, check: 0, wget: 0, fetchAndCache: 0, match: 0, load: 0, loadOk: 0, loadErr: 0 };
 
 	  function nameOf(fileId) {
 	    var s = String(fileId);
@@ -13,9 +14,14 @@
 	  }
 
 	  function loadFile(name) {
+	    stats.load++;
 	    return fetch(name, { cache: "no-store" }).then(function (resp) {
+	      stats.loadOk++;
 	      if (!resp.ok) throw new Error("HTTP " + resp.status + " for " + name);
 	      return resp.arrayBuffer();
+	    }, function (e) {
+	      stats.loadErr++;
+	      throw e;
 	    });
 	  }
 
@@ -24,6 +30,7 @@
 	    keys: function () { return Promise.resolve([]); },
 	    delete: function () { return Promise.resolve(); },
 	    fetchAndCache: function (fileId, version, request) {
+	      stats.fetchAndCache++;
 	      var url = request && request.url ? request.url : String(request);
 	      var name = String(url).split("/").pop();
 	      return loadFile(name).then(function (buf) {
@@ -32,6 +39,7 @@
 	      });
 	    },
 	    match: function (fileId, version) {
+	      stats.match++;
 	      var buf = cache.get(fileId);
 	      if (buf !== undefined) {
 	        return Promise.resolve(new Response(buf));
@@ -72,13 +80,14 @@
 	    }
 	  }
 
-	  function wrap(name, argIndex) {
+	  function wrap(name, argIndex, statKey) {
 	    var impl;
 	    Object.defineProperty(window, name, {
 	      configurable: true,
 	      get: function () { return impl; },
 	      set: function (fn) {
 	        impl = function () {
+	          if (statKey) stats[statKey]++;
 	          try { ensureXa(arguments[argIndex]); } catch (e) { /* ignore */ }
 	          return fn.apply(this, arguments);
 	        };
@@ -86,8 +95,23 @@
 	    });
 	  }
 
-	  wrap("__gx_async_wget2", 0);
-	  wrap("__gx_check_cache", 0);
+	  wrap("__gx_async_wget2", 0, "wget");
+	  wrap("__gx_check_cache", 0, "check");
+
+	  // count prepare_cache calls without changing behaviour
+	  (function () {
+	    var impl;
+	    Object.defineProperty(window, "__gx_prepare_cache", {
+	      configurable: true,
+	      get: function () { return impl; },
+	      set: function (fn) {
+	        impl = function () {
+	          stats.prepare++;
+	          return fn.apply(this, arguments);
+	        };
+	      }
+	    });
+	  })();
 	})();
 
 	// Background Color Changer Function
