@@ -83,6 +83,20 @@
 	  }
 	})();
 
+	// Override __gx_cache_file so xa["game.unx"] is set from the preloaded buffer
+	// before __gx_prepare_cache checks it. This fixes the timing race where
+	// __gx_cache_file returns immediately without waiting for fetchAndCache.
+	(function () {
+	  var orig = window.__gx_cache_file;
+	  window.__gx_cache_file = function (a) {
+	    if (a && a.name === "game.unx" && preloaded) {
+	      xa["game.unx"] = { name: a.name, md5: a.md5, fileId: "game.unx:" + a.md5, version: ya };
+	      return Promise.resolve();
+	    }
+	    return orig.call(this, a);
+	  };
+	})();
+
 	// Background Color Changer Function
 	function changecolor(el) {
 		document.body.style.backgroundColor = el.value;
