@@ -282,10 +282,14 @@
     <script type="text/javascript">
       (async () => {
         // Expose a global so the route menu can kick off the game.
-        window.__kaizoStartGame = async function (route) {
+        window.__kaizoStartGame = async function (route, resume) {
           // Preserve the chosen route across the service-worker reload (a page that
           // registers a SW is not controlled by it until the next navigation).
-          try { sessionStorage.setItem("kaizo_route", route); } catch (e) { /* ignore */ }
+          // `resume` is set when we re-enter after that reload, so the marker is
+          // cleared and the route menu comes back on the next visit.
+          if (!resume) {
+            try { sessionStorage.setItem("kaizo_route", route); } catch (e) { /* ignore */ }
+          }
 
           const menu = document.getElementById('routeMenu');
           const wrapper = document.getElementById('gameWrapper');
@@ -330,7 +334,7 @@
           const stored = sessionStorage.getItem("kaizo_route");
           if (stored) {
             sessionStorage.removeItem("kaizo_route");
-            window.__kaizoStartGame(stored);
+            window.__kaizoStartGame(stored, true);
           }
         } catch (e) { /* ignore */ }
 
