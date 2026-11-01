@@ -11,12 +11,26 @@
    On start:
      - if we are returning to the same route, the live save is kept as-is;
      - if we are switching routes, the live save is banked under the route we
-       are leaving, and the new route's bank (or its pristine seed) is loaded. */
+       are leaving, and the new route's bank (or its pristine seed) is loaded.
+
+   Route-gated spell: the weird routes give Noelle SNOWGRAVE (spell id 10).
+   That is applied as a migration to whatever save ends up live, so players who
+   already banked progress still get it without losing anything else. */
 (function () {
   const LIVE_KEY = "/_savedata/filech3_0";
   const BANK_PREFIX = "/_savedata/kaizo_bank_";
   const ACTIVE_ROUTE_KEY = "kaizo_active_route";
   const ROUTES = ["normal", "weird", "abandoned"];
+
+  // Save layout (scr_saveprocess / scr_load, non-console branch), 3055 lines:
+  //   spell[i][j] -> line 67 + 62*i + j  (1-based)
+  const SAVE_LINES = 3055;
+  const SPELL_BASE = 67;
+  const SPELL_STRIDE = 62;
+  const SPELL_SLOTS = 12;
+  const NOELLE = 4;              // global.char index for Noelle
+  const SNOWGRAVE = 10;          // scr_spellinfo case 10
+  const WEIRD_ROUTES = ["weird", "abandoned"];
 
   function normalize(route) {
     if (ROUTES.indexOf(route) === -1) return "normal";
@@ -63,6 +77,47 @@
     return new Uint8Array(await res.arrayBuffer());
   }
 
+  /* Byte-exact helpers: the save is plain text, but player names can contain
+     non-ASCII bytes, so we never round-trip through UTF-8. */
+  function bytesToString(u8) {
+    let out = "";
+    for (let i = 0; i < u8.length; i++) out += String.fromCharCode(u8[i]);
+    return out;
+  }
+
+  function stringToBytes(s) {
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+    return out;
+  }
+
+  /* Give Noelle SNOWGRAVE on the weird routes, in the first free spell slot.
+     Returns the original bytes when nothing needs changing. */
+  function applyRouteSpells(route, contents) {
+    if (WEIRD_ROUTES.indexOf(route) === -1) return contents;
+
+    const text = bytesToString(contents);
+    const sep = text.indexOf("\r\n") !== -1 ? "\r\n" : "\n";
+    const lines = text.split(sep);
+    if (lines.length !== SAVE_LINES) return contents; // unknown layout, don't touch
+
+    const first = SPELL_BASE + SPELL_STRIDE * NOELLE - 1;
+    const slotLines = [];
+    for (let j = 0; j < SPELL_SLOTS; j++) slotLines.push(first + j);
+
+    const values = slotLines.map((idx) => parseInt(lines[idx], 10) || 0);
+    if (values.indexOf(SNOWGRAVE) !== -1) return contents;
+
+    const free = values.indexOf(0);
+    if (free === -1) return contents; // no room, leave it alone
+
+    const idx = slotLines[free];
+    const hadSpace = /\s$/.test(lines[idx]);
+    lines[idx] = String(SNOWGRAVE) + (hadSpace ? " " : "");
+
+    return stringToBytes(lines.join(sep));
+  }
+
   async function preloadRoute(route) {
     route = normalize(route);
     const db = await openDB();
@@ -73,38 +128,42 @@
 
     const live = await getFile(db, LIVE_KEY);
 
-    // Returning to the route we were already playing: keep the live progress.
+    let contents;
+    let action;
+
     if (previous === route && live && live.contents) {
-      try { localStorage.setItem(ACTIVE_ROUTE_KEY, route); } catch (e) { /* ignore */ }
-      window.__kaizoRoute = route;
-      window.__kaizoPreloadAction = "continue";
-      return route;
-    }
+      // Returning to the route we were already playing: keep the live progress.
+      contents = live.contents;
+      action = "continue";
+    } else {
+      // Switching away: bank the progress of the route we are leaving.
+      if (previous && live && live.contents) {
+        await putFile(db, BANK_PREFIX + previous, live.contents);
+      }
 
-    // Switching away: bank the progress of the route we are leaving.
-    if (previous && previous !== route && live && live.contents) {
-      await putFile(db, BANK_PREFIX + previous, live.contents);
-    }
-
-    // Switching to a route we have played before: restore its bank.
-    if (previous !== route) {
+      // Switching to a route we have played before: restore its bank.
       const banked = await getFile(db, BANK_PREFIX + route);
       if (banked && banked.contents) {
-        await putFile(db, LIVE_KEY, banked.contents);
-        try { localStorage.setItem(ACTIVE_ROUTE_KEY, route); } catch (e) { /* ignore */ }
-        window.__kaizoRoute = route;
-        window.__kaizoPreloadAction = "restore";
-        return route;
+        contents = banked.contents;
+        action = "restore";
+      } else {
+        contents = await fetchSeed(route);
+        action = "seed";
       }
     }
 
-    // First time on this route: seed the pristine save.
-    const bytes = await fetchSeed(route);
-    await putFile(db, LIVE_KEY, bytes);
+    const fixed = applyRouteSpells(route, contents);
+    if (action !== "continue" || fixed !== contents) {
+      await putFile(db, LIVE_KEY, fixed);
+      if (action === "restore") await putFile(db, BANK_PREFIX + route, fixed);
+    }
+    if (action === "seed") {
+      console.log("[kaizo] route=" + route + ", seeded save:", fixed.length, "bytes");
+    }
+
     try { localStorage.setItem(ACTIVE_ROUTE_KEY, route); } catch (e) { /* ignore */ }
-    console.log("[kaizo] route=" + route + ", seeded save:", bytes.length, "bytes");
     window.__kaizoRoute = route;
-    window.__kaizoPreloadAction = "seed";
+    window.__kaizoPreloadAction = action;
     return route;
   }
 
@@ -112,12 +171,10 @@
   window.__kaizoResetRoute = async function (route) {
     route = normalize(route);
     const db = await openDB();
-    const bytes = await fetchSeed(route);
+    const bytes = applyRouteSpells(route, await fetchSeed(route));
     await putFile(db, LIVE_KEY, bytes);
     const bank = await getFile(db, BANK_PREFIX + route);
-    if (bank) {
-      await putFile(db, BANK_PREFIX + route, bytes);
-    }
+    if (bank) await putFile(db, BANK_PREFIX + route, bytes);
     try { localStorage.setItem(ACTIVE_ROUTE_KEY, route); } catch (e) { /* ignore */ }
     return route;
   };
