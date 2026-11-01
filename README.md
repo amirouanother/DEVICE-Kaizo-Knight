@@ -79,4 +79,22 @@ in `sw.js`.
 
 - `flag[i]` — line `553 + i` (2500 sequential lines)
 - `weapon[j]` — line `356 + 2*j`, `armor[j]` — line `357 + 2*j` (**interleaved**)
-- `weapon[15]` = line `386` is the free slot used for the Thorn Ring (weapon id 13)
+- `charweapon[ch]` — one of the 5 per-character stat blocks above the weapon block
+
+Route state is stored in real game flags, not a bespoke mod variable:
+
+| Route | `flag[454]` | `flag[456]` (`k_sideb` / sword-route) | Thorn Ring |
+| --- | --- | --- | --- |
+| Normal | 0 | 0 | no |
+| Weird (Side B) | 0 | 1 | yes |
+| Abandoned weird | 1 | 0 | yes |
+
+The Thorn Ring is base-game weapon id **13** (`scr_weaponinfo` case 13). The mod
+itself has no acquisition code for it, so the saves grant it the same way the
+game does: `scr_weaponget(13)` puts the new weapon in slot 0 and re-packs every
+existing weapon after it. The weapon array is therefore **contiguous**, with no
+empty rows in the EQUIP list.
+
+Progress is kept per route: `preload.js` banks the live `filech3_0` under
+`/_savedata/kaizo_bank_<route>` when the player switches route and restores it
+when they come back, so reloading does not wipe a route's save.
