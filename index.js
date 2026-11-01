@@ -1,3 +1,41 @@
+	// Shim for the Opera GX gameFiles API. The gx.games runner loads game.unx
+	// via __gx_async_wget2 / __gx_prepare_cache, which require window.oprt.gameFiles.
+	// On regular browsers that API is absent, so we provide a fetch-based shim.
+	// game.unx is served by sw.js, which reassembles the split game.unx.partN files.
+	(function () {
+	  if (window.oprt && window.oprt.gameFiles) return;
+	  var cache = new Map();
+	  window.oprt = window.oprt || {};
+	  window.oprt.gameFiles = {
+	    keys: function () { return Promise.resolve([]); },
+	    delete: function () { return Promise.resolve(); },
+	    fetchAndCache: function (fileId, version, request) {
+	      var url = request && request.url ? request.url : String(request);
+	      return fetch(url).then(function (resp) {
+	        return resp.arrayBuffer().then(function (buf) {
+	          cache.set(fileId, new Uint8Array(buf));
+	          return new Response(buf.slice(0));
+	        });
+	      });
+	    },
+	    match: function (fileId, version) {
+	      var buf = cache.get(fileId);
+	      if (buf !== undefined) {
+	        return Promise.resolve(new Response(buf));
+	      }
+	      // Not cached yet: fall back to fetching the file by name.
+	      // fileId looks like "name:md5"; take the name part.
+	      var name = String(fileId).split(":")[0];
+	      return fetch("/" + name).then(function (resp) {
+	        return resp.arrayBuffer().then(function (buf) {
+	          cache.set(fileId, new Uint8Array(buf));
+	          return new Response(buf.slice(0));
+	        });
+	      });
+	    }
+	  };
+	})();
+
 	// Background Color Changer Function
 	function changecolor(el) {
 		document.body.style.backgroundColor = el.value;
