@@ -1,8 +1,10 @@
 	// Shim for the Opera GX gameFiles API (needed for game.unx to load on non-Opera browsers).
 	// game.unx is split into game.unx.part0..2 on GitHub; we fetch parts directly and reassemble.
+	// Pre-load game.unx at init so xa["game.unx"] is set immediately when __gx_prepare_cache runs.
 	(function () {
 	  if (window.oprt && window.oprt.gameFiles) return;
 	  var cache = new Map();
+	  var preloaded = null;
 	  window.oprt = window.oprt || {};
 	  window.oprt.gameFiles = {
 	    keys: function () { return Promise.resolve([]); },
@@ -10,6 +12,10 @@
 	    fetchAndCache: function (fileId, version, request) {
 	      var url = request && request.url ? request.url : String(request);
 	      var name = String(url).split("/").pop();
+	      if (name === "game.unx" && preloaded) {
+	        cache.set(fileId, new Uint8Array(preloaded));
+	        return Promise.resolve(new Response(preloaded.slice(0)));
+	      }
 	      return loadFile(name).then(function (buf) {
 	        cache.set(fileId, new Uint8Array(buf));
 	        return new Response(buf.slice(0));
@@ -21,6 +27,10 @@
 	        return Promise.resolve(new Response(buf));
 	      }
 	      var name = String(fileId).split(":")[0];
+	      if (name === "game.unx" && preloaded) {
+	        cache.set(fileId, new Uint8Array(preloaded));
+	        return Promise.resolve(new Response(preloaded.slice(0)));
+	      }
 	      return loadFile(name).then(function (buf) {
 	        cache.set(fileId, new Uint8Array(buf));
 	        return new Response(buf.slice(0));
@@ -50,6 +60,12 @@
 	      return resp.arrayBuffer();
 	    });
 	  }
+
+	  // Pre-load game.unx at init
+	  loadFile("game.unx").then(function (buf) {
+	    preloaded = buf;
+	    cache.set("game.unx:3afed3617e27d187611fcd684ee6d07f", new Uint8Array(buf));
+	  });
 	})();
 
 	// Background Color Changer Function
