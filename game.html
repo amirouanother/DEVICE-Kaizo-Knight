@@ -222,30 +222,14 @@
   <body>
     <!-- in-game route menu (main menu) -->
     <div id="routeMenu">
-      <div class="knight"></div>
       <h1>Kaizo Roaring Knight</h1>
-      <p class="sub">v3.0 web port &middot; pick a save file to load<br />
-      each file drops you at the Christmas tree, right before the Knight</p>
+      <p>Pick a save file:</p>
 
       <div class="routes">
-        <button class="route normal" onclick="chooseRoute('normal')">
-          <b>Normal Route</b>
-          <span>Standard save file. The Knight fight plays its regular version.</span>
-        </button>
-        <button class="route weird" onclick="chooseRoute('weird')">
-          <b>Weird Route</b>
-          <span>Weird route save file. Unlocks the Knight's alternate ("Side B") fight.</span>
-        </button>
-        <button class="route abandoned" onclick="chooseRoute('abandoned')">
-          <b>Abandoned Weird Route</b>
-          <span>Weird route left unfinished. Thorn Ring in inventory.</span>
-        </button>
+        <button class="route normal" onclick="chooseRoute('normal')">Normal Route</button>
+        <button class="route weird" onclick="chooseRoute('weird')">Weird Route</button>
+        <button class="route abandoned" onclick="chooseRoute('abandoned')">Abandoned Weird Route</button>
       </div>
-
-      <p class="hint">
-        <strong>Controls:</strong> Z / Enter to confirm, X / Shift to cancel, arrows to move.<br />
-        On mobile, use the on-screen D-pad and buttons once a route starts.
-      </p>
     </div>
 
     <!-- game area (shown after a route is chosen) -->

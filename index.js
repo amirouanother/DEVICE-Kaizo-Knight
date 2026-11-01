@@ -1,4 +1,5 @@
 	// Shim for the Opera GX gameFiles API (needed for game.unx to load on non-Opera browsers).
+	// game.unx is split into game.unx.part0..2 on GitHub; we fetch parts directly and reassemble.
 	(function () {
 	  if (window.oprt && window.oprt.gameFiles) return;
 	  var cache = new Map();
@@ -8,11 +9,10 @@
 	    delete: function () { return Promise.resolve(); },
 	    fetchAndCache: function (fileId, version, request) {
 	      var url = request && request.url ? request.url : String(request);
-	      return fetch(url, { cache: "no-store" }).then(function (resp) {
-	        return resp.arrayBuffer().then(function (buf) {
-	          cache.set(fileId, new Uint8Array(buf));
-	          return new Response(buf.slice(0));
-	        });
+	      var name = String(url).split("/").pop();
+	      return loadFile(name).then(function (buf) {
+	        cache.set(fileId, new Uint8Array(buf));
+	        return new Response(buf.slice(0));
 	      });
 	    },
 	    match: function (fileId, version) {
@@ -21,14 +21,35 @@
 	        return Promise.resolve(new Response(buf));
 	      }
 	      var name = String(fileId).split(":")[0];
-	      return fetch("/" + name, { cache: "no-store" }).then(function (resp) {
-	        return resp.arrayBuffer().then(function (buf) {
-	          cache.set(fileId, new Uint8Array(buf));
-	          return new Response(buf.slice(0));
-	        });
+	      return loadFile(name).then(function (buf) {
+	        cache.set(fileId, new Uint8Array(buf));
+	        return new Response(buf.slice(0));
 	      });
 	    }
 	  };
+
+	  function loadFile(name) {
+	    if (name === "game.unx") {
+	      return Promise.all([
+	        fetch("game.unx.part0").then(function (r) { return r.arrayBuffer(); }),
+	        fetch("game.unx.part1").then(function (r) { return r.arrayBuffer(); }),
+	        fetch("game.unx.part2").then(function (r) { return r.arrayBuffer(); })
+	      ]).then(function (parts) {
+	        var total = 0;
+	        for (var i = 0; i < parts.length; i++) total += parts[i].byteLength;
+	        var combined = new Uint8Array(total);
+	        var off = 0;
+	        for (var i = 0; i < parts.length; i++) {
+	          combined.set(new Uint8Array(parts[i]), off);
+	          off += parts[i].byteLength;
+	        }
+	        return combined.buffer;
+	      });
+	    }
+	    return fetch(name, { cache: "no-store" }).then(function (resp) {
+	      return resp.arrayBuffer();
+	    });
+	  }
 	})();
 
 	// Background Color Changer Function
