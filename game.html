@@ -312,8 +312,8 @@
 
           // Load the game runner (index.js sets up Module, runner-sw.js registers
           // the service worker that reassembles game.unx, then starts the runner).
-          await loadScript("index.js");
-          await loadScript("runner-sw.js");
+          await loadScript("index.js?v=" + Date.now());
+          await loadScript("runner-sw.js?v=" + Date.now());
 
           setupMobileControls();
           loadLayout();
