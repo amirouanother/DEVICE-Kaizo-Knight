@@ -1,19 +1,34 @@
 	// Shim for the Opera GX gameFiles API (needed for game.unx to load on non-Opera browsers).
 	// game.unx is split into game.unx.part0..2 on GitHub; the service worker reassembles it.
+	// We also auto-populate the runner's `xa` manifest so __gx_async_wget2/__gx_check_cache
+	// never see an undefined entry (the runner only fills `xa` asynchronously, which races).
 	(function () {
 	  if (window.oprt && window.oprt.gameFiles) return;
 	  var cache = new Map();
+
+	  function nameOf(fileId) {
+	    var s = String(fileId);
+	    var i = s.indexOf(":");
+	    return i >= 0 ? s.substring(0, i) : s;
+	  }
+
+	  function loadFile(name) {
+	    return fetch(name, { cache: "no-store" }).then(function (resp) {
+	      if (!resp.ok) throw new Error("HTTP " + resp.status + " for " + name);
+	      return resp.arrayBuffer();
+	    });
+	  }
+
 	  window.oprt = window.oprt || {};
 	  window.oprt.gameFiles = {
 	    keys: function () { return Promise.resolve([]); },
 	    delete: function () { return Promise.resolve(); },
 	    fetchAndCache: function (fileId, version, request) {
 	      var url = request && request.url ? request.url : String(request);
-	      return fetch(url, { cache: "no-store" }).then(function (resp) {
-	        return resp.arrayBuffer().then(function (buf) {
-	          cache.set(fileId, new Uint8Array(buf));
-	          return new Response(buf.slice(0));
-	        });
+	      var name = String(url).split("/").pop();
+	      return loadFile(name).then(function (buf) {
+	        cache.set(fileId, new Uint8Array(buf));
+	        return new Response(buf.slice(0));
 	      });
 	    },
 	    match: function (fileId, version) {
@@ -21,15 +36,58 @@
 	      if (buf !== undefined) {
 	        return Promise.resolve(new Response(buf));
 	      }
-	      var name = String(fileId).split(":")[0];
-	      return fetch("/" + name, { cache: "no-store" }).then(function (resp) {
-	        return resp.arrayBuffer().then(function (buf) {
-	          cache.set(fileId, new Uint8Array(buf));
-	          return new Response(buf.slice(0));
-	        });
+	      var name = nameOf(fileId);
+	      return loadFile(name).then(function (buf) {
+	        cache.set(fileId, new Uint8Array(buf));
+	        return new Response(buf.slice(0));
 	      });
 	    }
 	  };
+
+	  // --- make the runner's `xa` manifest entries exist for every known file ---
+	  var md5map = null;
+	  function getMd5(name) {
+	    if (!md5map) {
+	      md5map = {};
+	      try {
+	        var names = manifestFiles().split(";");
+	        var md5s = manifestFilesMD5();
+	        for (var i = 0; i < names.length; i++) md5map[names[i]] = md5s[i] || "";
+	      } catch (e) { /* manifest not ready yet */ }
+	    }
+	    return md5map[name] || "";
+	  }
+
+	  function ensureXa(name) {
+	    if (!name) return;
+	    if (!window.xa) window.xa = {};
+	    if (!window.xa[name]) {
+	      var md5 = getMd5(name);
+	      window.xa[name] = {
+	        name: name,
+	        md5: md5,
+	        fileId: name + ":" + md5,
+	        version: window.ya || ""
+	      };
+	    }
+	  }
+
+	  function wrap(name, argIndex) {
+	    var impl;
+	    Object.defineProperty(window, name, {
+	      configurable: true,
+	      get: function () { return impl; },
+	      set: function (fn) {
+	        impl = function () {
+	          try { ensureXa(arguments[argIndex]); } catch (e) { /* ignore */ }
+	          return fn.apply(this, arguments);
+	        };
+	      }
+	    });
+	  }
+
+	  wrap("__gx_async_wget2", 0);
+	  wrap("__gx_check_cache", 0);
 	})();
 
 	// Background Color Changer Function

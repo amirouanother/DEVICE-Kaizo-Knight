@@ -168,12 +168,14 @@
         border: 2px solid #363636;
         z-index: 1;
         box-shadow: inset 0 1px 4px rgba(0,0,0,0.25);
+        pointer-events: none;
       }
       .dpad-arm.up    { top: 10px; left: 50%; transform: translateX(-50%); width: 44px; height: 72px; border-radius: 11px 11px 0 0; }
       .dpad-arm.down  { bottom: 10px; left: 50%; transform: translateX(-50%); width: 44px; height: 72px; border-radius: 0 0 11px 11px; }
       .dpad-arm.left  { left: 10px; top: 50%; transform: translateY(-50%); width: 72px; height: 44px; border-radius: 11px 0 0 11px; }
       .dpad-arm.right { right: 10px; top: 50%; transform: translateY(-50%); width: 72px; height: 44px; border-radius: 0 11px 11px 0; }
-      .dpad-arm:active { background: rgba(195, 195, 195, 0.62); border-color: #666666; }
+      .dpad-arm.active { background: rgba(195, 195, 195, 0.62); border-color: #666666; }
+      .dpad-hub { pointer-events: none; }
       /* RIGHT: three vertically stacked circular action buttons Z, X, C */
       .actions {
         right: 26px; bottom: 14px;
@@ -189,7 +191,7 @@
         box-shadow: inset 0 2px 8px rgba(0,0,0,0.35), 0 5px 14px rgba(0,0,0,0.55);
         text-shadow: 0 1px 3px rgba(0,0,0,0.6);
       }
-      .btn:active { background: rgba(185, 185, 185, 0.58); border-color: #7a7a7a; }
+      .btn:active, .btn.active { background: rgba(185, 185, 185, 0.58); border-color: #7a7a7a; }
 
       /* selection outline when unlocked + selected */
       .ctrl.selected::after {
@@ -369,34 +371,147 @@
         // ---------- mobile touch controls ----------
         function setupMobileControls() {
           const canvas = document.getElementById('canvas');
-          const mk = (type, code, kc) => {
-            const e = new KeyboardEvent(type, { key: code, code: code, keyCode: kc, which: kc, bubbles: true, cancelable: true });
+          const mk = (type, kc) => {
+            const e = new KeyboardEvent(type, { key: '', code: '', keyCode: kc, which: kc, bubbles: true, cancelable: true });
             Object.defineProperty(e, 'keyCode', { get: () => kc });
             Object.defineProperty(e, 'which', { get: () => kc });
             return e;
           };
+          const held = new Set();
           const press = (kc) => {
+            if (held.has(kc)) return;
+            held.add(kc);
             canvas.focus();
-            document.dispatchEvent(mk('keydown', '', kc));
-            window.dispatchEvent(mk('keydown', '', kc));
+            document.dispatchEvent(mk('keydown', kc));
+            window.dispatchEvent(mk('keydown', kc));
           };
           const release = (kc) => {
-            document.dispatchEvent(mk('keyup', '', kc));
-            window.dispatchEvent(mk('keyup', '', kc));
+            if (!held.has(kc)) return;
+            held.delete(kc);
+            document.dispatchEvent(mk('keyup', kc));
+            window.dispatchEvent(mk('keyup', kc));
           };
-          function bind(id, kc) {
-            const b = document.getElementById(id);
-            const start = (e) => { e.preventDefault(); press(kc); };
-            const end = (e) => { e.preventDefault(); release(kc); };
-            b.addEventListener('touchstart', start, { passive: false });
-            b.addEventListener('touchend', end, { passive: false });
-            b.addEventListener('touchcancel', end, { passive: false });
-            b.addEventListener('mousedown', start);
-            b.addEventListener('mouseup', end);
-            b.addEventListener('mouseleave', end);
+          const releaseAll = () => { Array.from(held).forEach(release); };
+
+          // ---- D-pad: zone based, supports sliding + diagonals ----
+          const dpad = document.getElementById('dpadLeft');
+          const DPAD_KEYS = { up: 38, down: 40, left: 37, right: 39 };
+          const armEls = {
+            up: document.getElementById('btnUp'),
+            down: document.getElementById('btnDown'),
+            left: document.getElementById('btnLeft'),
+            right: document.getElementById('btnRight')
+          };
+          let dpadPointer = null;
+          let dpadHeld = [];
+
+          const paintArm = (dir, on) => {
+            const el = armEls[dir];
+            if (el) el.classList.toggle('active', on);
+          };
+
+          const setDpadDirs = (dirs) => {
+            const next = new Set(dirs);
+            dpadHeld.forEach((d) => { if (!next.has(d)) { release(DPAD_KEYS[d]); paintArm(d, false); } });
+            next.forEach((d) => { if (dpadHeld.indexOf(d) === -1) { press(DPAD_KEYS[d]); paintArm(d, true); } });
+            dpadHeld = Array.from(next);
+          };
+
+          const updateDpad = (x, y) => {
+            if (!dpad) return;
+            const r = dpad.getBoundingClientRect();
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            // dead zone at the hub and far outside the circle
+            if (dist < r.width * 0.14 || dist > r.width * 0.85) { setDpadDirs([]); return; }
+            let deg = Math.atan2(dy, dx) * 180 / Math.PI; // -180..180, 0 = right
+            deg = (deg + 360) % 360;
+            const dirs = [];
+            if (deg >= 337.5 || deg < 22.5) dirs.push('right');
+            else if (deg < 67.5) { dirs.push('right'); dirs.push('down'); }
+            else if (deg < 112.5) dirs.push('down');
+            else if (deg < 157.5) { dirs.push('left'); dirs.push('down'); }
+            else if (deg < 202.5) dirs.push('left');
+            else if (deg < 247.5) { dirs.push('left'); dirs.push('up'); }
+            else if (deg < 292.5) dirs.push('up');
+            else { dirs.push('up'); dirs.push('right'); }
+            setDpadDirs(dirs);
+          };
+
+          const endDpad = () => {
+            dpadPointer = null;
+            setDpadDirs([]);
+          };
+
+          if (dpad) {
+            dpad.addEventListener('pointerdown', (e) => {
+              e.preventDefault();
+              dpadPointer = e.pointerId;
+              try { dpad.setPointerCapture(e.pointerId); } catch (_) {}
+              updateDpad(e.clientX, e.clientY);
+            });
+            dpad.addEventListener('pointermove', (e) => {
+              if (dpadPointer !== e.pointerId) return;
+              e.preventDefault();
+              updateDpad(e.clientX, e.clientY);
+            });
+            dpad.addEventListener('pointerup', (e) => {
+              if (dpadPointer !== e.pointerId) return;
+              e.preventDefault();
+              endDpad();
+            });
+            dpad.addEventListener('pointercancel', (e) => {
+              if (dpadPointer !== e.pointerId) return;
+              endDpad();
+            });
+            dpad.addEventListener('lostpointercapture', endDpad);
           }
-          bind('btnUp', 38); bind('btnDown', 40); bind('btnLeft', 37); bind('btnRight', 39);
-          bind('btnZ', 90); bind('btnX', 88); bind('btnC', 67);
+
+          // ---- Action buttons: per button ----
+          const bindButton = (id, kc) => {
+            const b = document.getElementById(id);
+            if (!b) return;
+            let down = false;
+            const start = (e) => {
+              if (down) return;
+              down = true;
+              e.preventDefault();
+              b.classList.add('active');
+              press(kc);
+            };
+            const end = (e) => {
+              if (!down) return;
+              down = false;
+              e.preventDefault();
+              b.classList.remove('active');
+              release(kc);
+            };
+            b.addEventListener('pointerdown', start);
+            b.addEventListener('pointerup', end);
+            b.addEventListener('pointercancel', end);
+            b.addEventListener('pointerleave', end);
+            // Fallback for browsers without PointerEvent
+            if (!window.PointerEvent) {
+              b.addEventListener('touchstart', (e) => { e.preventDefault(); start(e); }, { passive: false });
+              b.addEventListener('touchend', (e) => { e.preventDefault(); end(e); }, { passive: false });
+              b.addEventListener('touchcancel', (e) => { e.preventDefault(); end(e); }, { passive: false });
+              b.addEventListener('mousedown', start);
+              b.addEventListener('mouseup', end);
+              b.addEventListener('mouseleave', end);
+            }
+          };
+          bindButton('btnZ', 90);
+          bindButton('btnX', 88);
+          bindButton('btnC', 67);
+
+          // Release everything if the tab loses focus so nothing sticks
+          window.addEventListener('blur', releaseAll);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') releaseAll();
+          });
         }
 
         // ---------- controller customization state ----------
