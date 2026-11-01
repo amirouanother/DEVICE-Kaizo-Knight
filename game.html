@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <base href="./" />
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0" />
+    <title>Kaizo Roaring Knight</title>
+    <style>
+      @-webkit-keyframes rotation {
+        from { -webkit-transform: rotate(0deg); } to { -webkit-transform: rotate(360deg); }
+      }
+      @-moz-keyframes rotation {
+        from { -moz-transform: rotate(0deg); } to { -moz-transform: rotate(360deg); }
+      }
+      @-o-keyframes rotation {
+        from { -o-transform: rotate(0deg); } to { -o-transform: rotate(360deg); }
+      }
+      @keyframes rotation {
+        from { transform: rotate(0deg); } to { transform: rotate(360deg); }
+      }
+
+      html { background: #05040a; }
+      body {
+        font-family: arial;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
+        min-height: fill-available;
+        min-width: 100vw;
+        background: radial-gradient(60% 60% at 50% 0%, #1b1030 0%, transparent 70%),
+                    radial-gradient(50% 50% at 50% 100%, #0d1a24 0%, transparent 70%),
+                    #05040a;
+        color: #f2f2f2;
+        display: flex;
+        flex-direction: column;
+        overflow-x: hidden;
+        place-items: center;
+      }
+      body.scrollingDisabled { overflow: hidden; }
+
+      .emscripten { padding-right: 0; display: block; }
+      div.emscripten { text-align: center; font-family: "Lucida Console", Monaco, monospace; }
+      canvas.emscripten {
+        display: none;
+        background-color: black;
+        position: flex;
+        transition: opacity 0.5s ease-in;
+        opacity: 0;
+        image-rendering: pixelated;
+        -ms-interpolation-mode: nearest-neighbor;
+      }
+      canvas.active { animation-name: fadeIn; animation-duration: 2s; opacity: 1; }
+      canvas.paused { animation-name: blur; animation-duration: 0.5s; filter: blur(2px) grayscale(1); }
+      @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+      @keyframes blur { 0% { filter: blur(0) grayscale(0); } 100% { filter: blur(2px) grayscale(1); } }
+
+      .spinner {
+        height: 30px; width: 30px;
+        -webkit-animation: rotation 0.8s linear infinite;
+        animation: rotation 0.8s linear infinite;
+        border: 5px solid #bdff00; border-top: 5px solid #719900; border-radius: 100%;
+      }
+      #status { display: inline-block; vertical-align: top; font-weight: bold; color: white; }
+      #progress { width: 250px; height: 10px; -webkit-appearance: none; appearance: none; padding: 5px; }
+      progress[value]::-webkit-progress-bar { background-color: #8492a6; height: 10px; border-radius: 15px; }
+      progress[value]::-webkit-progress-value { background-image: -webkit-linear-gradient(left, #719900, #bdff00); height: 10px; border-radius: 15px; }
+      div.loading {
+        position: absolute; top: 0; bottom: 0; left: 0; right: 0;
+        display: flex; flex-direction: column; justify-content: center; align-items: center;
+        pointer-events: none; z-index: 50;
+      }
+      div.loading > * { padding: 10px; margin: 10px; }
+
+      /* ---------- route menu overlay (in-game main menu) ---------- */
+      #routeMenu {
+        position: absolute; top: 0; bottom: 0; left: 0; right: 0;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        z-index: 100; text-align: center; padding: 40px 22px 48px;
+      }
+      #routeMenu[hidden] { display: none !important; }
+
+      .knight {
+        width: 96px; height: 96px; margin: 0 auto 18px; border-radius: 50%;
+        background: radial-gradient(circle at 50% 45%, #4b3b8f 0%, #17102e 62%, transparent 70%);
+        box-shadow: 0 0 42px 10px rgba(120, 90, 255, 0.22); position: relative;
+      }
+      .knight::before, .knight::after {
+        content: ""; position: absolute; top: 50%; left: 50%;
+        width: 54px; height: 3px;
+        background: linear-gradient(90deg, transparent, #d8d0ff, transparent);
+        transform-origin: center;
+      }
+      .knight::before { transform: translate(-50%, -50%) rotate(38deg); }
+      .knight::after { transform: translate(-50%, -50%) rotate(-38deg); }
+
+      h1 {
+        margin: 0; font-size: clamp(22px, 5vw, 34px); letter-spacing: 0.14em;
+        text-transform: uppercase; color: #ffffff;
+        text-shadow: 0 0 18px rgba(160, 130, 255, 0.45);
+      }
+      .sub {
+        margin: 10px 0 32px; font-size: 12px; line-height: 1.7; letter-spacing: 0.06em;
+        color: #9d97b8; max-width: 600px;
+      }
+
+      .routes { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 720px; }
+      button.route {
+        display: block; width: 100%; text-align: left; cursor: pointer;
+        padding: 16px 20px; border-radius: 6px; border: 1px solid #3a3357;
+        background: linear-gradient(180deg, #171227 0%, #100c1c 100%);
+        color: inherit; font-family: inherit;
+        transition: border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+      }
+      button.route:hover {
+        border-color: #8b74ff;
+        box-shadow: 0 0 0 1px rgba(139, 116, 255, 0.35), 0 8px 26px rgba(80, 50, 200, 0.25);
+        transform: translateY(-1px);
+      }
+      button.route:active { transform: translateY(1px); }
+      button.route b { display: block; font-size: 15px; letter-spacing: 0.1em; text-transform: uppercase; color: #ffffff; margin-bottom: 6px; }
+      button.route span { display: block; font-size: 11.5px; line-height: 1.6; color: #a9a2c4; }
+      button.route.weird b { color: #ff9fd0; }
+      button.route.abandoned b { color: #9fd8ff; }
+
+      .hint {
+        margin: 30px 0 0; font-size: 11px; line-height: 1.8; color: #6f6a86;
+        max-width: 600px;
+      }
+      .hint strong { color: #b9b2d6; font-weight: normal; }
+
+      /* ---------- mobile touch controls ---------- */
+      #mobileControls {
+        position: absolute; bottom: 0; left: 0; right: 0;
+        display: none; /* shown once a route is chosen */
+        z-index: 60; pointer-events: none; padding: 14px 12px 34px;
+      }
+      #mobileControls.shown {
+        display: flex; flex-direction: row; justify-content: space-between;
+        pointer-events: auto; align-items: flex-end;
+      }
+      .ctrl {
+        position: absolute; display: flex; align-items: center; justify-content: center;
+        user-select: none; -webkit-user-select: none; touch-action: none;
+      }
+      /* LEFT: single integrated circular D-pad with cross arms + central hub */
+      .dpad {
+        left: 12px; bottom: 14px;
+        width: 168px; height: 168px;
+        border-radius: 50%;
+        background: rgba(105, 105, 105, 0.34);
+        border: 4px solid #424242;
+        box-shadow: inset 0 0 26px rgba(0,0,0,0.5), 0 6px 16px rgba(0,0,0,0.55);
+        position: relative;
+      }
+      .dpad-hub {
+        width: 48px; height: 48px;
+        border-radius: 50%;
+        background: rgba(165, 165, 165, 0.55);
+        border: 3px solid #363636;
+        box-shadow: inset 0 2px 8px rgba(0,0,0,0.35), 0 2px 6px rgba(255,255,255,0.12);
+        z-index: 2;
+      }
+      .dpad-arm {
+        position: absolute;
+        background: rgba(145, 145, 145, 0.44);
+        border: 2px solid #363636;
+        z-index: 1;
+        box-shadow: inset 0 1px 4px rgba(0,0,0,0.25);
+      }
+      .dpad-arm.up    { top: 10px; left: 50%; transform: translateX(-50%); width: 44px; height: 72px; border-radius: 11px 11px 0 0; }
+      .dpad-arm.down  { bottom: 10px; left: 50%; transform: translateX(-50%); width: 44px; height: 72px; border-radius: 0 0 11px 11px; }
+      .dpad-arm.left  { left: 10px; top: 50%; transform: translateY(-50%); width: 72px; height: 44px; border-radius: 11px 0 0 11px; }
+      .dpad-arm.right { right: 10px; top: 50%; transform: translateY(-50%); width: 72px; height: 44px; border-radius: 0 11px 11px 0; }
+      .dpad-arm:active { background: rgba(195, 195, 195, 0.62); border-color: #666666; }
+      /* RIGHT: three vertically stacked circular action buttons Z, X, C */
+      .actions {
+        right: 26px; bottom: 14px;
+        width: 80px; display: flex; flex-direction: column; gap: 14px;
+      }
+      .btn {
+        width: 76px; height: 76px; border-radius: 50%;
+        background: rgba(125, 125, 125, 0.36);
+        border: 4px solid #424242;
+        color: #e8e8e8; font-family: "Lucida Console", Monaco, monospace;
+        font-weight: bold; font-size: 24px;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: inset 0 2px 8px rgba(0,0,0,0.35), 0 5px 14px rgba(0,0,0,0.55);
+        text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+      }
+      .btn:active { background: rgba(185, 185, 185, 0.58); border-color: #7a7a7a; }
+
+      /* ---------- controller customization ---------- */
+      #controllerSettings {
+        position: fixed;
+        bottom: 16px;
+        right: 16px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: rgba(90, 60, 140, 0.45);
+        border: 3px solid #5a3c8c;
+        color: #e0d0ff;
+        font-family: "Lucida Console", Monaco, monospace;
+        font-weight: bold;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        touch-action: none;
+      }
+      #controllerSettings:hover, #controllerSettings.locked { border-color: #a78bfa; background: rgba(90, 60, 140, 0.65); }
+
+      /* selection outline when unlocked + selected */
+      .ctrl.selected::after {
+        content: "";
+        position: absolute;
+        top: -4px; left: -4px; right: -4px; bottom: -4px;
+        border: 2px dashed #a78bfa;
+        border-radius: 50%;
+        pointer-events: none;
+        box-shadow: 0 0 8px rgba(167, 139, 250, 0.45);
+      }
+
+      /* resize handles */
+      .resize-handle {
+        position: absolute;
+        width: 14px; height: 14px;
+        background: #a78bfa;
+        border: 2px solid #3a1c6b;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+        z-index: 3;
+        touch-action: none;
+      }
+      .resize-handle.nw { top: -7px; left: -7px; cursor: nwse-resize; }
+      .resize-handle.ne { top: -7px; right: -7px; cursor: nesw-resize; }
+      .resize-handle.sw { bottom: -7px; left: -7px; cursor: nesw-resize; }
+      .resize-handle.se { bottom: -7px; right: -7px; cursor: nwse-resize; }
+      .resize-handle.hidden { display: none; }
+
+      /* Deltarune-inspired customization panel */
+      #customPanel {
+        position: fixed;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 340px;
+        background: #0a0c17;
+        border: 3px solid #2a1f4a;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        z-index: 2000;
+        font-family: "Lucida Console", Monaco, monospace;
+        display: none;
+      }
+      #customPanel.hidden { display: none; }
+      #customPanelHeader {
+        background: #1a1633;
+        border-bottom: 2px solid #4a3c7a;
+        color: #e0d0ff;
+        padding: 10px 14px;
+        font-size: 15px;
+        font-weight: bold;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      #customPanelBody { padding: 14px; color: #c8c0e0; font-size: 13px; line-height: 1.5; }
+      .customRow { margin-bottom: 12px; }
+      .customLabel { color: #9b8fc7; margin-bottom: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+      .customBtn {
+        width: 100%;
+        padding: 8px 12px;
+        margin-top: 8px;
+        background: rgba(90, 60, 140, 0.35);
+        border: 2px solid #5a3c8c;
+        color: #e0d0ff;
+        font-family: "Lucida Console", Monaco, monospace;
+        font-size: 13px;
+        cursor: pointer;
+        touch-action: none;
+      }
+      .customBtn:hover { background: rgba(90, 60, 140, 0.6); border-color: #a78bfa; }
+      .customBtn.secondary { background: rgba(60, 40, 90, 0.35); border-color: #3a2a6a; color: #b8b0d0; }
+      .customBtn.secondary:hover { background: rgba(60, 40, 90, 0.6); border-color: #7a62c0; }
+      .toggleRow {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid #251c40;
+      }
+      .toggleSwitch {
+        width: 40px; height: 20px;
+        background: #2a1f4a;
+        border: 2px solid #4a3c7a;
+        border-radius: 20px;
+        position: relative;
+        cursor: pointer;
+      }
+      .toggleSwitch.on { background: #6d28d9; border-color: #a78bfa; }
+      .toggleKnob {
+        width: 16px; height: 16px;
+        background: #e0d0ff;
+        border-radius: 50%;
+        position: absolute;
+        top: 1px; left: 2px;
+        transition: left 0.15s;
+      }
+      .toggleSwitch.on .toggleKnob { left: 22px; }
+    </style>
+  </head>
+  <body>
+    <!-- in-game route menu (main menu) -->
+    <div id="routeMenu">
+      <div class="knight"></div>
+      <h1>Kaizo Roaring Knight</h1>
+      <p class="sub">v3.0 web port &middot; pick a save file to load<br />
+      each file drops you at the Christmas tree, right before the Knight</p>
+
+      <div class="routes">
+        <button class="route normal" onclick="chooseRoute('normal')">
+          <b>Normal Route</b>
+          <span>Standard save file. The Knight fight plays its regular version.</span>
+        </button>
+        <button class="route weird" onclick="chooseRoute('weird')">
+          <b>Weird Route</b>
+          <span>Weird route save file. Unlocks the Knight's alternate ("Side B") fight.</span>
+        </button>
+        <button class="route abandoned" onclick="chooseRoute('abandoned')">
+          <b>Abandoned Weird Route</b>
+          <span>Weird route left unfinished. Thorn Ring in inventory.</span>
+        </button>
+      </div>
+
+      <p class="hint">
+        <strong>Controls:</strong> Z / Enter to confirm, X / Shift to cancel, arrows to move.<br />
+        On mobile, use the on-screen D-pad and buttons once a route starts.
+      </p>
+    </div>
+
+    <!-- game area (shown after a route is chosen) -->
+    <div id="pauseMenuContainer" hidden>
+      <div id="pauseMenuBorder">
+        <div id="pauseMenu">
+          <button id="resumeButton" onclick="resume()">
+            Resume
+          </button>
+          <button id="routeButton" onclick="location.href='index.html'">
+            Route Select
+          </button>
+          <button id="quitButton" onclick="quitIfSupported()">
+            Quit
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="gameWrapper" hidden>
+      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+      <div class="loading" id="loading">
+        <div class="spinner" id="spinner"></div>
+        <div class="emscripten" id="status">Downloading...</div>
+        <progress value="0" max="100" id="progress" hidden="1"></progress>
+      </div>
+
+      <div id="mobileControls">
+        <div class="dpad ctrl" id="dpadLeft">
+          <div class="dpad-hub"></div>
+          <div class="dpad-arm up" id="btnUp"></div>
+          <div class="dpad-arm down" id="btnDown"></div>
+          <div class="dpad-arm left" id="btnLeft"></div>
+          <div class="dpad-arm right" id="btnRight"></div>
+        </div>
+        <div class="actions ctrl" id="dpadRight">
+          <div class="btn" id="btnZ">Z</div>
+          <div class="btn" id="btnX">X</div>
+          <div class="btn" id="btnC">C</div>
+        </div>
+      </div>
+
+      <div id="controllerSettings" title="Controller Settings">⚙</div>
+      <div id="customPanel">
+        <div id="customPanelHeader">CONTROLLER SETUP</div>
+        <div id="customPanelBody">
+          <div class="toggleRow">
+            <span class="customLabel">Edit Mode</span>
+            <div class="toggleSwitch" id="editToggle"></div>
+          </div>
+          <div class="customRow">
+            <span class="customLabel">Selected: <span id="selName">none</span></span>
+          </div>
+          <button class="customBtn" id="resetBtn">RESET TO DEFAULT</button>
+          <button class="customBtn secondary" id="closeBtn">CLOSE</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="output-container" id="output-container"></div>
+    <div id="message-container"><div id="messages"></div></div>
+	<!-- Ads Stuff for games that need it -->
+
+    <script src="preload.js"></script>
+    <script type="text/javascript">
+      (async () => {
+        // Expose a global so the route menu can kick off the game.
+        window.__kaizoStartGame = async function (route) {
+          const menu = document.getElementById('routeMenu');
+          const wrapper = document.getElementById('gameWrapper');
+          const canvas = document.getElementById('canvas');
+          const loading = document.getElementById('loading');
+          const mobile = document.getElementById('mobileControls');
+
+          if (menu) menu.hidden = true;
+          if (wrapper) wrapper.hidden = false;
+          canvas.focus();
+
+          // Seed the chosen route's save into IndexedDB before the game runs.
+          try {
+            if (window.__kaizoPreloadRoute) await window.__kaizoPreloadRoute(route);
+          } catch (e) {
+            console.warn("[kaizo] save preload failed", e);
+          }
+
+          // Show mobile controls on small screens.
+          if (mobile) mobile.classList.add('shown');
+
+          // Load the game runner (index.js sets up Module, runner-sw.js registers
+          // the service worker that reassembles game.unx, then starts the runner).
+          await loadScript("index.js");
+          await loadScript("runner-sw.js");
+
+          setupMobileControls();
+          loadLayout();
+          applyLayout();
+          initCustomUI();
+          return true;
+        };
+
+        function loadScript(src) {
+          return new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = src;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error("failed to load " + src));
+            document.body.appendChild(s);
+          });
+        }
+
+        // Video cutscene handling (fullscreen video, then resume).
+        const originalLog = console.log;
+        console.log = function (...args) {
+          originalLog.apply(console, args);
+          const message = args.join(' ');
+          if (message.includes("Videos dont work on gamemaker web export. - breadbb")) {
+            GM_pause();
+            const video = document.createElement("video");
+            video.src = "vid/tennaintrof1_compressed_28.mp4";
+            video.style.position = "absolute";
+            video.style.top = "0"; video.style.left = "0";
+            video.style.width = "100vw"; video.style.height = "100vh";
+            video.style.objectFit = "cover"; video.style.zIndex = "9999";
+            video.style.pointerEvents = "none";
+            video.autoplay = true; video.controls = false; video.muted = false;
+            video.playsInline = true;
+            document.body.appendChild(video);
+            video.addEventListener("ended", () => {
+              document.body.removeChild(video);
+              if (typeof resume === "function") resume();
+            });
+          }
+        };
+
+        // ---------- mobile touch controls ----------
+        function setupMobileControls() {
+          const canvas = document.getElementById('canvas');
+          const mk = (type, code, kc) => {
+            const e = new KeyboardEvent(type, { key: code, code: code, keyCode: kc, which: kc, bubbles: true, cancelable: true });
+            Object.defineProperty(e, 'keyCode', { get: () => kc });
+            Object.defineProperty(e, 'which', { get: () => kc });
+            return e;
+          };
+          const press = (kc) => {
+            canvas.focus();
+            document.dispatchEvent(mk('keydown', '', kc));
+            window.dispatchEvent(mk('keydown', '', kc));
+          };
+          const release = (kc) => {
+            document.dispatchEvent(mk('keyup', '', kc));
+            window.dispatchEvent(mk('keyup', '', kc));
+          };
+          function bind(id, kc) {
+            const b = document.getElementById(id);
+            const start = (e) => { e.preventDefault(); press(kc); };
+            const end = (e) => { e.preventDefault(); release(kc); };
+            b.addEventListener('touchstart', start, { passive: false });
+            b.addEventListener('touchend', end, { passive: false });
+            b.addEventListener('touchcancel', end, { passive: false });
+            b.addEventListener('mousedown', start);
+            b.addEventListener('mouseup', end);
+            b.addEventListener('mouseleave', end);
+          }
+          bind('btnUp', 38); bind('btnDown', 40); bind('btnLeft', 37); bind('btnRight', 39);
+          bind('btnZ', 90); bind('btnX', 88); bind('btnC', 67);
+        }
+
+        // ---------- controller customization state ----------
+        const CTRL_KEY = "kaizo_ctrl_layout";
+        const DEFAULT_LAYOUT = {
+          dpadLeft:   { left: 12,  bottom: 14, width: 168, height: 168 },
+          dpadRight:  { right: 12, bottom: 14, width: 72,  height: 200 },
+        };
+        let ctrlLocked = true;
+        let ctrlSelected = null;
+        let ctrlLayout = {};
+
+        function saveLayout() {
+          try {
+            localStorage.setItem(CTRL_KEY, JSON.stringify(ctrlLayout));
+          } catch (e) { /* ignore quota errors */ }
+        }
+
+        function loadLayout() {
+          try {
+            const raw = localStorage.getItem(CTRL_KEY);
+            if (raw) ctrlLayout = JSON.parse(raw);
+          } catch (e) { ctrlLayout = {}; }
+        }
+
+        function applyLayout() {
+          for (const [id, pos] of Object.entries(ctrlLayout)) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.style.left = (pos.left != null) ? pos.left + "px" : "";
+            el.style.right = (pos.right != null) ? pos.right + "px" : "";
+            el.style.top = (pos.top != null) ? pos.top + "px" : "";
+            el.style.bottom = (pos.bottom != null) ? pos.bottom + "px" : "";
+            el.style.width = (pos.width != null) ? pos.width + "px" : "";
+            el.style.height = (pos.height != null) ? pos.height + "px" : "";
+          }
+        }
+
+        function resetLayout() {
+          ctrlLayout = JSON.parse(JSON.stringify(DEFAULT_LAYOUT));
+          applyLayout();
+          saveLayout();
+          updateSelLabel();
+        }
+
+        function updateSelLabel() {
+          const lbl = document.getElementById('selName');
+          if (lbl) lbl.textContent = ctrlSelected ? ctrlSelected.id : "none";
+        }
+
+        function toggleEdit() {
+          ctrlLocked = !ctrlLocked;
+          const btn = document.getElementById('controllerSettings');
+          const toggle = document.getElementById('editToggle');
+          const knob = toggle ? toggle.querySelector('.toggleKnob') : null;
+          if (btn) {
+            if (ctrlLocked) {
+              btn.classList.remove('locked');
+              if (knob) { toggle.classList.remove('on'); knob.style.left = '2px'; }
+            } else {
+              btn.classList.add('locked');
+              if (knob) { toggle.classList.add('on'); knob.style.left = '22px'; }
+            }
+          }
+          updateResizeHandles();
+          updateSelection();
+        }
+
+        function createResizeHandles(el) {
+          // remove existing
+          el.querySelectorAll('.resize-handle').forEach(h => h.remove());
+          if (ctrlLocked || el !== ctrlSelected) return;
+          const rect = el.getBoundingClientRect();
+          const ids = ['nw','ne','sw','se'];
+          const pos = [
+            { cls: 'nw', top: -7, left: -7 },
+            { cls: 'ne', top: -7, right: -7 },
+            { cls: 'sw', bottom: -7, left: -7 },
+            { cls: 'se', bottom: -7, right: -7 },
+          ];
+          pos.forEach((p, i) => {
+            const h = document.createElement('div');
+            h.className = 'resize-handle ' + p.cls;
+            h.style.top = p.top != null ? p.top + 'px' : '';
+            h.style.bottom = p.bottom != null ? p.bottom + 'px' : '';
+            h.style.left = p.left != null ? p.left + 'px' : '';
+            h.style.right = p.right != null ? p.right + 'px' : '';
+            el.appendChild(h);
+            h.addEventListener('mousedown', (e) => {
+              if (!ctrlLocked) {
+                e.stopPropagation();
+                startResize(el, p.cls, e.clientX, e.clientY);
+              }
+            });
+            h.addEventListener('touchstart', (e) => {
+              if (!ctrlLocked) {
+                e.stopPropagation();
+                startResize(el, p.cls, e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }, { passive: false });
+          });
+        }
+
+        function updateResizeHandles() {
+          document.querySelectorAll('.ctrl').forEach(el => createResizeHandles(el));
+        }
+
+        function updateSelection() {
+          document.querySelectorAll('.ctrl').forEach(el => {
+            el.classList.toggle('selected', el === ctrlSelected);
+          });
+          updateResizeHandles();
+          updateSelLabel();
+        }
+
+        function selectCtrl(el) {
+          if (!ctrlLocked) {
+            ctrlSelected = el;
+            updateSelection();
+          }
+        }
+
+        // ---------- drag / resize state ----------
+        let dragActive = false;
+        let dragEl = null;
+        let dragStartX = 0, dragStartY = 0;
+        let dragStartLeft = 0, dragStartTop = 0;
+        let dragStartRight = 0, dragStartBottom = 0;
+        let resizeActive = false;
+        let resizeEl = null;
+        let resizeHandle = '';
+        let resizeStartX = 0, resizeStartY = 0;
+        let resizeStartRect = null;
+
+        function getPos(el) {
+          const cs = getComputedStyle(el);
+          return {
+            left: cs.left === 'auto' ? null : parseFloat(cs.left),
+            top: cs.top === 'auto' ? null : parseFloat(cs.top),
+            right: cs.right === 'auto' ? null : parseFloat(cs.right),
+            bottom: cs.bottom === 'auto' ? null : parseFloat(cs.bottom),
+            width: parseFloat(cs.width),
+            height: parseFloat(cs.height),
+          };
+        }
+
+        function setPos(el, pos) {
+          el.style.left = (pos.left != null) ? pos.left + 'px' : '';
+          el.style.top = (pos.top != null) ? pos.top + 'px' : '';
+          el.style.right = (pos.right != null) ? pos.right + 'px' : '';
+          el.style.bottom = (pos.bottom != null) ? pos.bottom + 'px' : '';
+          el.style.width = (pos.width != null) ? pos.width + 'px' : '';
+          el.style.height = (pos.height != null) ? pos.height + 'px' : '';
+        }
+
+        function startDrag(el, clientX, clientY) {
+          dragActive = true;
+          dragEl = el;
+          dragStartX = clientX;
+          dragStartY = clientY;
+          const p = getPos(el);
+          dragStartLeft = p.left != null ? p.left : 0;
+          dragStartTop = p.top != null ? p.top : 0;
+          dragStartRight = p.right != null ? p.right : 0;
+          dragStartBottom = p.bottom != null ? p.bottom : 0;
+          document.addEventListener('mousemove', onDragMove);
+          document.addEventListener('mouseup', onDragEnd);
+          document.addEventListener('touchmove', onDragMove, { passive: false });
+          document.addEventListener('touchend', onDragEnd);
+          document.addEventListener('touchcancel', onDragEnd);
+        }
+
+        function onDragMove(e) {
+          if (!dragActive) return;
+          e.preventDefault();
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+          const dx = clientX - dragStartX;
+          const dy = clientY - dragStartY;
+          const p = { ...getPos(dragEl) };
+          if (p.left != null) p.left = dragStartLeft + dx;
+          if (p.top != null) p.top = dragStartTop + dy;
+          if (p.right != null) p.right = dragStartRight - dx;
+          if (p.bottom != null) p.bottom = dragStartBottom - dy;
+          setPos(dragEl, p);
+        }
+
+        function onDragEnd(e) {
+          if (!dragActive) return;
+          e.preventDefault();
+          dragActive = false;
+          dragEl = null;
+          const id = dragEl ? dragEl.id : null;
+          if (id) {
+            ctrlLayout[id] = getPos(dragEl);
+            saveLayout();
+          }
+          document.removeEventListener('mousemove', onDragMove);
+          document.removeEventListener('mouseup', onDragEnd);
+          document.removeEventListener('touchmove', onDragMove);
+          document.removeEventListener('touchend', onDragEnd);
+          document.removeEventListener('touchcancel', onDragEnd);
+        }
+
+        function startResize(el, handle, clientX, clientY) {
+          resizeActive = true;
+          resizeEl = el;
+          resizeHandle = handle;
+          resizeStartX = clientX;
+          resizeStartY = clientY;
+          resizeStartRect = getPos(el);
+          document.addEventListener('mousemove', onResizeMove);
+          document.addEventListener('mouseup', onResizeEnd);
+          document.addEventListener('touchmove', onResizeMove, { passive: false });
+          document.addEventListener('touchend', onResizeEnd);
+          document.addEventListener('touchcancel', onResizeEnd);
+        }
+
+        function onResizeMove(e) {
+          if (!resizeActive) return;
+          e.preventDefault();
+          const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+          const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+          const dx = clientX - resizeStartX;
+          const dy = clientY - resizeStartY;
+          const s = resizeStartRect;
+          const p = { left: s.left, top: s.top, right: s.right, bottom: s.bottom, width: s.width, height: s.height };
+          const MIN = 40, MAX_DPAD = 320, MAX_BTN = 160;
+
+          if (resizeHandle === 'nw') { p.width = Math.max(MIN, s.width - dx); p.height = Math.max(MIN, s.height - dy); p.left = s.left + (s.width - p.width); p.top = s.top + (s.height - p.height); }
+          else if (resizeHandle === 'ne') { p.width = Math.max(MIN, s.width + dx); p.height = Math.max(MIN, s.height - dy); p.top = s.top + (s.height - p.height); }
+          else if (resizeHandle === 'sw') { p.width = Math.max(MIN, s.width - dx); p.height = Math.max(MIN, s.height + dy); p.left = s.left + (s.width - p.width); p.bottom = s.bottom + (s.height - p.height); }
+          else if (resizeHandle === 'se') { p.width = Math.max(MIN, s.width + dx); p.height = Math.max(MIN, s.height + dy); p.bottom = s.bottom + (s.height - p.height); }
+
+          // preserve dpad square proportions
+          if (resizeEl.id === 'dpadLeft') { p.height = p.width; }
+          // caps
+          const maxCap = resizeEl.id === 'dpadLeft' ? MAX_DPAD : MAX_BTN;
+          if (p.width > maxCap) { p.width = maxCap; if (resizeEl.id === 'dpadLeft') p.height = p.width; }
+          if (p.height > maxCap) { p.height = maxCap; if (resizeEl.id === 'dpadLeft') p.width = p.height; }
+
+          setPos(resizeEl, p);
+        }
+
+        function onResizeEnd(e) {
+          if (!resizeActive) return;
+          e.preventDefault();
+          resizeActive = false;
+          const id = resizeEl ? resizeEl.id : null;
+          if (id) {
+            ctrlLayout[id] = getPos(resizeEl);
+            saveLayout();
+          }
+          resizeEl = null;
+          resizeHandle = '';
+          resizeStartRect = null;
+          document.removeEventListener('mousemove', onResizeMove);
+          document.removeEventListener('mouseup', onResizeEnd);
+          document.removeEventListener('touchmove', onResizeMove);
+          document.removeEventListener('touchend', onResizeEnd);
+          document.removeEventListener('touchcancel', onResizeEnd);
+        }
+
+        function initCustomUI() {
+          const settingsBtn = document.getElementById('controllerSettings');
+          const editToggle = document.getElementById('editToggle');
+          const closeBtn = document.getElementById('closeBtn');
+          const resetBtn = document.getElementById('resetBtn');
+
+          if (settingsBtn) {
+            settingsBtn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); toggleEdit(); });
+            settingsBtn.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); toggleEdit(); }, { passive: false });
+          }
+          if (editToggle) {
+            editToggle.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); toggleEdit(); });
+            editToggle.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); toggleEdit(); }, { passive: false });
+          }
+          if (closeBtn) {
+            closeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); document.getElementById('customPanel').classList.add('hidden'); });
+            closeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); document.getElementById('customPanel').classList.add('hidden'); }, { passive: false });
+          }
+          if (resetBtn) {
+            resetBtn.addEventListener('mousedown', (e) => { e.preventDefault(); resetLayout(); });
+            resetBtn.addEventListener('touchstart', (e) => { e.preventDefault(); resetLayout(); }, { passive: false });
+          }
+
+          // click-to-select + drag a control when unlocked
+          document.querySelectorAll('.ctrl').forEach(el => {
+            el.addEventListener('mousedown', (e) => {
+              if (!ctrlLocked && !e.target.classList.contains('resize-handle')) {
+                e.stopPropagation();
+                selectCtrl(el);
+                startDrag(el, e.clientX, e.clientY);
+              }
+            });
+            el.addEventListener('touchstart', (e) => {
+              if (!ctrlLocked && !e.target.classList.contains('resize-handle')) {
+                e.stopPropagation();
+                selectCtrl(el);
+                startDrag(el, e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }, { passive: false });
+          });
+
+          // resize handles
+          document.querySelectorAll('.resize-handle').forEach(h => {
+            h.addEventListener('mousedown', (e) => {
+              if (!ctrlLocked) {
+                e.stopPropagation();
+                const el = h.parentElement;
+                const cls = Array.from(h.classList).find(c => /^(nw|ne|sw|se)$/.test(c));
+                startResize(el, cls || 'se', e.clientX, e.clientY);
+              }
+            });
+            h.addEventListener('touchstart', (e) => {
+              if (!ctrlLocked) {
+                e.stopPropagation();
+                const el = h.parentElement;
+                const cls = Array.from(h.classList).find(c => /^(nw|ne|sw|se)$/.test(c));
+                startResize(el, cls || 'se', e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }, { passive: false });
+          });
+        }
+      })();
+      window.chooseRoute = window.__kaizoStartGame;
+    </script>
+    <script>
+      const originalLog = console.log;
+      console.log = function (...args) {
+        originalLog.apply(console, args);
+        const message = args.join(' ');
+        if (message.includes("Videos dont work on gamemaker web export. - breadbb")) {
+          GM_pause();
+          const video = document.createElement("video");
+          video.src = "vid/tennaintrof1_compressed_28.mp4";
+          video.style.position = "absolute";
+          video.style.top = "0"; video.style.left = "0";
+          video.style.width = "100vw"; video.style.height = "100vh";
+          video.style.objectFit = "cover"; video.style.zIndex = "9999";
+          video.style.pointerEvents = "none";
+          video.autoplay = true; video.controls = false; video.muted = false;
+          video.playsInline = true;
+          document.body.appendChild(video);
+          video.addEventListener("ended", () => {
+            document.body.removeChild(video);
+            if (typeof resume === "function") resume();
+          });
+        }
+      };
+    </script>
+  </body>
+</html>

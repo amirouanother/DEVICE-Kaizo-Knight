@@ -1,0 +1,17 @@
+# Cloudflare Pages / wrangler config for Kaizo Knight web port
+name = "kaizo-knight-web"
+compatibility_date = "2026-11-01"
+
+[build]
+  # No build step — the port is already static HTML/JS/assets.
+  command = ""
+  destination = "."
+
+[pages]
+  # Deployment directory is the project root.
+  # All files (game.html, game.unx, runner.*, mus/, save/, vid/, etc.) are published.
+
+[[rules]]
+  # Ensure the WASM and game data are served with correct MIME types.
+  # Cloudflare Pages usually handles this, but we enforce it here.
+  # (kept minimal; Pages infers .wasm/.unx/.ogg/.mp4 automatically)
