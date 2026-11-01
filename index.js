@@ -1,3 +1,37 @@
+	// Shim for the Opera GX gameFiles API (needed for game.unx to load on non-Opera browsers).
+	// game.unx is split into game.unx.part0..2 on GitHub; the service worker reassembles it.
+	(function () {
+	  if (window.oprt && window.oprt.gameFiles) return;
+	  var cache = new Map();
+	  window.oprt = window.oprt || {};
+	  window.oprt.gameFiles = {
+	    keys: function () { return Promise.resolve([]); },
+	    delete: function () { return Promise.resolve(); },
+	    fetchAndCache: function (fileId, version, request) {
+	      var url = request && request.url ? request.url : String(request);
+	      return fetch(url, { cache: "no-store" }).then(function (resp) {
+	        return resp.arrayBuffer().then(function (buf) {
+	          cache.set(fileId, new Uint8Array(buf));
+	          return new Response(buf.slice(0));
+	        });
+	      });
+	    },
+	    match: function (fileId, version) {
+	      var buf = cache.get(fileId);
+	      if (buf !== undefined) {
+	        return Promise.resolve(new Response(buf));
+	      }
+	      var name = String(fileId).split(":")[0];
+	      return fetch("/" + name, { cache: "no-store" }).then(function (resp) {
+	        return resp.arrayBuffer().then(function (buf) {
+	          cache.set(fileId, new Uint8Array(buf));
+	          return new Response(buf.slice(0));
+	        });
+	      });
+	    }
+	  };
+	})();
+
 	// Background Color Changer Function
 	function changecolor(el) {
 		document.body.style.backgroundColor = el.value;
