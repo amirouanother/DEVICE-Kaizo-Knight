@@ -5,7 +5,7 @@ const CACHE_NAME = JSON.stringify({"name": GAME_NAME, "version": GAME_VERSION});
 /* game.unx is 136 MB, which GitHub rejects (>100 MB per file), so the build is
    shipped as game.unx.part0..N and stitched back together here. */
 const GAME_UNX_PARTS = 3;
-const GAME_UNX_BYTES = 143081620;
+const GAME_UNX_BYTES = 143083284;
 
 const CACHE_FILES = ["runner.data",
 "runner.js",
